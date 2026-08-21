@@ -11,6 +11,18 @@
 #   manage n'a pas besoin d'etre synchrone du commit : elle a besoin d'etre
 #   possible a la demande, et tracee quand elle a lieu.
 #
+# OU CE FICHIER DOIT VIVRE
+#   Un workflow declenche uniquement par workflow_dispatch n'est dispatchable
+#   QUE s'il est present sur la BRANCHE PAR DEFAUT du depot (ici master), et il
+#   n'apparait dans l'onglet Actions qu'une fois indexe par un push sur cette
+#   branche. Le pousser sur une autre branche ne suffit pas : l'API repond
+#   404 "workflow not found on the default branch", ce qui se lit a tort comme
+#   un fichier invalide. Constate le 21/08/2026 — voir README, section CI/CD.
+#
+#   Corollaire : toute modification de ce fichier doit atteindre master pour
+#   prendre effet, contrairement a ci.yml que le declencheur push execute depuis
+#   n'importe quelle branche.
+#
 # COUT D'UN LANCEMENT
 #   10 questions x 1 run = 10 appels Cortex Analyst + 10 executions SQL sur
 #   WH_AI_DEV (XSMALL). Ordre de grandeur mesure sur ce projet : quelques

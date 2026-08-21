@@ -274,6 +274,14 @@ warehouse autre que `WH_AI_DEV` a servi — le garde-fou de coût, vérifié via
 de la fenêtre est affiché dans le résumé du job, lu dans `INFORMATION_SCHEMA` et
 non `ACCOUNT_USAGE`, dont la latence donnerait presque toujours zéro.
 
+> **Ce workflow doit vivre sur la branche par défaut** (`master` ici). Un
+> workflow déclenché uniquement par `workflow_dispatch` n'est dispatchable que
+> s'il y est présent, et n'apparaît dans l'onglet Actions qu'une fois indexé par
+> un push **sur cette branche**. Poussé ailleurs, l'API répond
+> `404 workflow not found on the default branch` — ce qui se lit à tort comme un
+> fichier invalide. `ci.yml` ne connaît pas ce problème : son déclencheur `push`
+> l'exécute depuis n'importe quelle branche, ce qui masque l'asymétrie.
+
 ### Configurer le secret, une seule fois
 
 **Settings → Secrets and variables → Actions → New repository secret.**
