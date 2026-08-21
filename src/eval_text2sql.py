@@ -110,7 +110,18 @@ def scalar_match(expected, actual, tol: float | None = None) -> bool:
         tol = NUM_TOL
 
     if isinstance(expected, bool) or isinstance(actual, bool):
-        return expected == actual
+        # bool est une SOUS-CLASSE de int : `True == 1` vaut True en Python. Un
+        # simple `expected == actual` ici laisserait donc un statut booleen
+        # matcher un compteur, exactement ce que cette branche veut empecher.
+        # Exiger que les deux cotes soient booleens est la seule facon de tenir
+        # la promesse ci-dessus. Ecart trouve au J5 par test_eval_compare.py ;
+        # sans effet sur les scores publies, le golden dataset ne contient aucun
+        # booleen (valeurs attendues : float, int et listes de ces types).
+        return (
+            isinstance(expected, bool)
+            and isinstance(actual, bool)
+            and expected == actual
+        )
 
     if isinstance(expected, (int, float)):
         try:

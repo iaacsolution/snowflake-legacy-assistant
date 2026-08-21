@@ -224,9 +224,79 @@ python src/ask.py --raw   "Y a-t-il eu des echecs d'etape ?"       # JSON brut d
 ### Vérifier
 
 ```bash
-python src/test_ask_parse.py     # 7 cas de dépouillement, hors ligne, sans crédit
-python src/eval_text2sql.py      # golden dataset Analyst, 10 questions, via API REST
+pytest src/                      # 26 cas hors ligne, sans réseau ni crédit
+python scripts/lint_sql.py sql/  # garde-fous : privilèges, secrets, XSMALL, TARGET_LAG
+python src/eval_text2sql.py      # golden dataset Analyst, 10 questions — CONSOMME des crédits
 ```
+
+---
+
+## Intégration continue
+
+Deux workflows GitHub Actions, **délibérément séparés par niveau de coût**.
+
+| | `ci.yml` | `eval-snowflake.yml` |
+|---|---|---|
+| Déclencheur | `push`, `pull_request` | **`workflow_dispatch` uniquement** |
+| Appels Snowflake | **aucun** | 10 appels Cortex Analyst |
+| Crédits | **0** | quelques centièmes |
+| Secret requis | aucun | `SNOWFLAKE_PRIVATE_KEY` |
+
+### `ci.yml` — à chaque push, gratuit
+
+`black --check`, `ruff check` (config partagée dans `pyproject.toml`, pour que le
+runner et le poste local appliquent les mêmes règles), `py_compile`, `pytest`
+(26 cas hors ligne), le linter de garde-fous SQL, et un contrôle qu'aucun
+credential n'est versionné.
+
+Aucune dépendance Snowflake n'est installée dans ce job : c'est ce qui garantit
+que les tests ne peuvent pas appeler le service par accident — un import du
+connecteur ferait échouer l'étape.
+
+### `eval-snowflake.yml` — jamais automatique
+
+> **Ce workflow ne se déclenche jamais tout seul.** Pas de `push`, pas de
+> `pull_request`, pas de `schedule` — uniquement un clic dans l'onglet Actions.
+> **C'est un choix délibéré, pas un oubli.** Le compte est un trial plafonné à
+> 50 crédits/mois par `RM_TRIAL` ; un déclenchement automatique ferait payer
+> chaque commit, y compris ceux qui ne touchent qu'un fichier markdown.
+> Détecter une régression d'un service managé n'a pas besoin d'être synchrone
+> du commit — seulement possible à la demande, et tracé quand elle a lieu.
+
+Il lance **1 run** du golden dataset, pas 3 : un run de CI détecte une
+régression, il n'a pas à mesurer la variance. Les 3 runs de la mesure de
+référence servaient à chiffrer l'instabilité, ce qui est un travail d'analyse et
+coûte trois fois plus cher.
+
+Le job échoue si le score passe sous le seuil (100 % par défaut) **ou** si un
+warehouse autre que `WH_AI_DEV` a servi — le garde-fou de coût, vérifié via
+`QUERY_HISTORY` et restreint aux requêtes de l'utilisateur du job. Le coût réel
+de la fenêtre est affiché dans le résumé du job, lu dans `INFORMATION_SCHEMA` et
+non `ACCOUNT_USAGE`, dont la latence donnerait presque toujours zéro.
+
+### Configurer le secret, une seule fois
+
+**Settings → Secrets and variables → Actions → New repository secret.**
+
+| Nom | Contenu |
+|---|---|
+| `SNOWFLAKE_PRIVATE_KEY` | le contenu **intégral** de `~/.snowflake/rsa_key.p8`, en-têtes `-----BEGIN…` et `-----END…` compris |
+| `SNOWFLAKE_ACCOUNT` | l'identifiant de compte (`SELECT CURRENT_ACCOUNT();`) |
+| `SNOWFLAKE_USER` | l'utilisateur Snowflake (`SELECT CURRENT_USER();`) |
+
+```bash
+# macOS / Linux
+cat ~/.snowflake/rsa_key.p8 | pbcopy
+# Windows PowerShell
+Get-Content ~/.snowflake/rsa_key.p8 -Raw | Set-Clipboard
+```
+
+Au runtime, le job écrit la clé et un `connections.toml` sous `$RUNNER_TEMP`
+(hors arborescence git, en `chmod 600`), puis les **supprime en fin de job même
+en cas d'échec** — l'étape de nettoyage porte `if: always()`.
+
+La clé privée n'est jamais commitée : `.gitignore` bloque `*.p8`, `*.pem`,
+`*.key`, et `ci.yml` échoue si un tel fichier apparaît dans l'index.
 
 ---
 
@@ -346,10 +416,15 @@ de l'agent partirait sur le warehouse par défaut, hors monitor.
 ## Structure
 
 ```
+.github/workflows/  ci.yml (gratuit, automatique)
+                    eval-snowflake.yml (payant, manuel uniquement)
+scripts/ lint_sql.py       garde-fous SQL de CLAUDE.md
+         ci_gate_eval.py   verdict score + warehouse + coût
 sql/     00_bootstrap  01_keypair_auth  10_tables  20_chunk  30_search_service
          31_search_tests  40_metrics  41_semantic_view  50_agent  60_masking
          90_comparaison_diy
-src/     ingest.py  ask.py  eval_text2sql.py  test_ask_parse.py
+src/     ingest.py  ask.py  eval_text2sql.py
+         test_ask_parse.py  test_eval_compare.py
 eval/    golden_questions.json
 docs/    02-search-vs-diy.md        Cortex Search vs DIY, l'embedding asymétrique
          06-retrospective.md        la limite structurelle des vues sémantiques

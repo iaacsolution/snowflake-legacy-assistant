@@ -1,0 +1,151 @@
+# Evaluation Cortex Analyst — CONSOMME DES CREDITS SNOWFLAKE.
+#
+# CE WORKFLOW NE SE DECLENCHE JAMAIS TOUT SEUL.
+#   Pas de `push`, pas de `pull_request`, pas de `schedule`. Uniquement
+#   `workflow_dispatch`, c'est-a-dire un clic explicite dans l'onglet Actions.
+#
+#   C'EST UN CHOIX DELIBERE, PAS UN OUBLI. Le compte est un trial plafonne a
+#   50 credits par mois par le resource monitor RM_TRIAL. Un declenchement
+#   automatique sur push ferait payer chaque commit — y compris les commits qui
+#   ne touchent qu'un fichier markdown. La detection de regression d'un service
+#   manage n'a pas besoin d'etre synchrone du commit : elle a besoin d'etre
+#   possible a la demande, et tracee quand elle a lieu.
+#
+# COUT D'UN LANCEMENT
+#   10 questions x 1 run = 10 appels Cortex Analyst + 10 executions SQL sur
+#   WH_AI_DEV (XSMALL). Ordre de grandeur mesure sur ce projet : quelques
+#   centiemes de credit. Le cout reel de la fenetre est reporte dans le resume
+#   du job, pas estime.
+
+name: Evaluation Snowflake (manuel)
+
+on:
+  workflow_dispatch:
+    inputs:
+      seuil:
+        description: "Score minimal accepte, en pourcentage"
+        required: false
+        default: "100"
+      runs:
+        description: "Nombre de runs (1 suffit pour detecter une regression)"
+        required: false
+        default: "1"
+
+# Jamais deux evaluations en parallele : elles se disputeraient le warehouse et
+# fausseraient l'attribution des requetes dans QUERY_HISTORY.
+concurrency:
+  group: eval-snowflake
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluation:
+    name: Golden dataset Cortex Analyst
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependances
+        run: |
+          python -m pip install --quiet \
+            snowflake-connector-python requests cryptography PyJWT
+
+      - name: Fenetre de mesure
+        # Horodatage AVANT tout appel : il borne la fenetre lue plus tard dans
+        # QUERY_HISTORY et METERING_HISTORY. Sans lui, on attribuerait au job des
+        # requetes anterieures.
+        id: fenetre
+        run: echo "debut=$(date -u '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Materialiser la cle privee et la connexion
+        # La cle vit dans un secret GitHub, jamais dans le repo. Elle est ecrite
+        # sous $RUNNER_TEMP (hors arborescence git, donc impossible a committer
+        # par accident) avec des permissions 600, et supprimee a l'etape finale
+        # `if: always()`.
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SNOWFLAKE_PRIVATE_KEY:-}" ]; then
+            echo "::error::Secret SNOWFLAKE_PRIVATE_KEY absent. Voir README, section CI/CD."
+            exit 1
+          fi
+
+          umask 077
+          export SNOWFLAKE_HOME="$RUNNER_TEMP/snowflake"
+          mkdir -p "$SNOWFLAKE_HOME"
+
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$SNOWFLAKE_HOME/rsa_key.p8"
+          chmod 600 "$SNOWFLAKE_HOME/rsa_key.p8"
+
+          # connections.toml reconstitue au runtime : le client du projet
+          # s'attend a une connexion nommee `legacy_ai`, exactement comme en
+          # local. Aucune valeur n'est en dur dans le repo.
+          cat > "$SNOWFLAKE_HOME/connections.toml" <<TOML
+          [legacy_ai]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          private_key_file = "$SNOWFLAKE_HOME/rsa_key.p8"
+          role = "AI_ENGINEER_ROLE"
+          warehouse = "WH_AI_DEV"
+          database = "LEGACY_AI_DB"
+          schema = "CORE"
+          TOML
+          chmod 600 "$SNOWFLAKE_HOME/connections.toml"
+
+          echo "SNOWFLAKE_HOME=$SNOWFLAKE_HOME" >> "$GITHUB_ENV"
+          echo "Cle et connexion materialisees sous \$RUNNER_TEMP."
+
+      - name: Evaluation — 1 run sur le golden dataset
+        # --runs 1 et non 3 : un run de CI n'a pas a mesurer la variance, il a a
+        # detecter une regression. Les 3 runs de la mesure de reference (J3)
+        # servaient a chiffrer l'instabilite entre runs, ce qui est un travail
+        # d'analyse, pas de garde-fou — et coute trois fois plus cher.
+        run: |
+          python src/eval_text2sql.py \
+            --runs "${{ inputs.runs }}" \
+            --key-file "$SNOWFLAKE_HOME/rsa_key.p8" \
+            --out eval_ci.json
+
+      - name: Verdict — score, warehouse, cout
+        run: |
+          python scripts/ci_gate_eval.py \
+            --journal eval_ci.json \
+            --depuis "${{ steps.fenetre.outputs.debut }}" \
+            --seuil "${{ inputs.seuil }}"
+
+      - name: Journal detaille
+        # Retenu 7 jours. Il contient le SQL genere et les valeurs du pipeline :
+        # utile pour diagnostiquer une regression, mais ce sont des donnees
+        # reelles — d'ou une retention courte et aucun commit dans le repo
+        # (eval/analyst_run_log.json est dans .gitignore pour la meme raison).
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-evaluation
+          path: eval_ci.json
+          retention-days: 7
+
+      - name: Effacer la cle privee
+        # `if: always()` : la cle disparait meme si l'evaluation a echoue ou si
+        # le job a ete annule. Le runner GitHub est ephemere, mais on ne s'appuie
+        # pas sur cette promesse pour un secret.
+        if: always()
+        run: |
+          if [ -n "${SNOWFLAKE_HOME:-}" ] && [ -d "$SNOWFLAKE_HOME" ]; then
+            find "$SNOWFLAKE_HOME" -type f -exec shred -u {} \; 2>/dev/null || true
+            rm -rf "$SNOWFLAKE_HOME"
+          fi
+          echo "Cle privee et connections.toml supprimes."

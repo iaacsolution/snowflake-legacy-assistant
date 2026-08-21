@@ -131,7 +131,7 @@ def check_utf8(files: list[tuple[Path, Path]]) -> None:
                 f"{rel.as_posix()} n'est pas de l'UTF-8 valide "
                 f"(octet {exc.start}) — ingestion interrompue pour ne pas "
                 "corrompre le corpus."
-            )
+            ) from exc
         if raw.startswith(b"\xef\xbb\xbf"):
             LOG.warning(
                 "%s commence par un BOM UTF-8 ; il sera present dans le premier chunk.",
@@ -393,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         raise SystemExit(
             "snowflake-connector-python n'est pas installe : pip install snowflake-connector-python"
-        )
+        ) from None
 
     if not CHUNK_SQL.is_file():
         raise SystemExit(f"Script de chunking introuvable : {CHUNK_SQL}")

@@ -1,0 +1,39 @@
+# Configuration d'outillage du projet.
+#
+# POURQUOI CE FICHIER
+#   Sans lui, ruff applique le jeu de regles de la machine qui l'invoque : le
+#   poste de developpement et le runner GitHub peuvent alors diverger sans que
+#   rien ne le signale. Un `select` explicite rend la CI reproductible.
+#
+# Le projet n'est pas un paquet installable : pas de [project], pas de build.
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = [".venv", "__pycache__"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear.
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+  # Formatage des lignes longues : c'est black qui tranche, pas ruff. Les deux
+  # en desaccord sur une meme ligne produiraient une boucle sans fin.
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Les fichiers de test posent leurs payloads en litteraux plats, volontairement
+# proches du JSON reel de l'API : E402 (import apres du code) y est le prix a
+# payer pour l'insertion du sys.path avant l'import du module teste.
+"src/test_*.py" = ["E402"]
+
+[tool.pytest.ini_options]
+# testpaths limite la collecte a src/ : eval/ et sql/ ne contiennent aucun test
+# et une collecte large ramasserait des fichiers de donnees.
+testpaths = ["src"]
+python_files = ["test_*.py"]
+addopts = "-q"

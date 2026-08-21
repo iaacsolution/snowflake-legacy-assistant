@@ -21,3 +21,10 @@ eval/analyst_run_log.json
 # Environnement Python local : recreable depuis les dependances, propre a la
 # machine (chemins Windows en dur dans les scripts d'activation), et volumineux.
 .venv/
+
+# Outillage
+.ruff_cache/
+.pytest_cache/
+
+# Journal produit par le workflow eval-snowflake.yml (donnees reelles).
+eval_ci.json

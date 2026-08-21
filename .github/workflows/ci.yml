@@ -1,0 +1,85 @@
+# CI hors ligne — ZERO appel Snowflake, ZERO credit consomme.
+#
+# POURQUOI CE WORKFLOW EST SEPARE DE eval-snowflake.yml
+#   Les deux niveaux de cout ne se melangent jamais. Celui-ci tourne a chaque
+#   push et chaque pull request parce qu'il est gratuit : aucune connexion, aucun
+#   secret, aucun warehouse reveille. L'evaluation qui consomme des credits vit
+#   dans un fichier distinct, en declenchement manuel uniquement.
+#
+#   Un workflow unique qui ferait les deux consommerait des credits a chaque
+#   commit, sur un compte trial plafonne a 50 credits par mois.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Un seul job en vol par branche : un push rapide annule le precedent.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualite:
+    name: Qualite (hors ligne)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependances d'outillage
+        # Volontairement minimal : ce job ne doit importer aucun module
+        # Snowflake. src/test_ask_parse.py et src/test_eval_compare.py sont
+        # concus pour tourner sans connecteur — c'est la garantie qu'ils ne
+        # peuvent pas appeler le service par accident.
+        run: python -m pip install --quiet black ruff pytest
+
+      - name: black --check
+        run: python -m black --check --diff src/ scripts/
+
+      - name: ruff check
+        # Config dans pyproject.toml, la meme qu'en local : sans elle, ruff
+        # appliquerait le jeu de regles par defaut du runner et divergerait
+        # silencieusement du poste de developpement.
+        run: python -m ruff check src/ scripts/
+
+      - name: Compilation de tous les modules
+        run: |
+          python -m py_compile $(find src scripts -name '*.py' -print)
+
+      - name: Tests hors ligne
+        # 7 cas de depouillement de reponse d'agent + 19 cas de comparateur.
+        # Aucun reseau : si un import Snowflake se glissait dans un module
+        # teste, l'etape echouerait ici faute du paquet.
+        run: python -m pytest src/ -v
+
+      - name: Garde-fous SQL
+        # Pas de sqlfluff : ce sont les regles de CLAUDE.md qui sont verifiees
+        # (escalade de privilege hors amorcage, secret en dur, warehouse au-dela
+        # de XSMALL, TARGET_LAG sous '1 day'), pas un style d'indentation.
+        run: python scripts/lint_sql.py sql/
+
+      - name: Aucun secret versionne
+        # Filet de securite en plus de .gitignore : si connections.toml ou une
+        # cle privee atterrissait dans un commit, l'etape echoue.
+        run: |
+          set -e
+          if git ls-files | grep -E '(^|/)(connections\.toml|\.env)$|\.(p8|pem|key)$'; then
+            echo "::error::Un fichier de credentials est versionne."
+            exit 1
+          fi
+          if git grep -nI -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' -- . ; then
+            echo "::error::Une cle privee est presente dans le contenu versionne."
+            exit 1
+          fi
+          echo "Aucun credential versionne."

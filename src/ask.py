@@ -371,6 +371,7 @@ def main(argv=None) -> int:
         return 2
 
     import snowflake.connector
+
     from eval_text2sql import jeton_jwt
 
     conn = snowflake.connector.connect(connection_name=args.connection)
