@@ -10,10 +10,31 @@
      2. BENCHMARK_METRICS melange trois unites (ms, fichiers, pourcentage) dans
         une seule colonne metric_value. Sans modele, une somme naive additionne
         des millisecondes et des pourcentages. Les METRICS ci-dessous filtrent
-        systematiquement sur metric_name : c'est la garde principale.
+        systematiquement sur metric_name : cela REDUIT le risque, cela ne
+        l'ELIMINE PAS. Voir la mise en garde ci-dessous.
      3. Trois pieges de ce jeu de donnees produiraient des reponses fausses mais
-        plausibles. Ils sont neutralises ici, et documentes deux fois : en
+        plausibles. Ils sont adresses ici, et documentes deux fois : en
         commentaire SQL pour le mainteneur, dans COMMENT pour le modele.
+
+   CE QUE CE FICHIER NE PEUT PAS GARANTIR — mesure du 21/08/2026
+     Une formule METRICS n'est pas une contrainte executable. L'outil Analyst
+     ne transmet pas la vue au moteur SQL : il l'APLATIT en une CTE qui ne
+     contient que les FACTS et les DIMENSIONS. Les METRICS n'y survivent pas.
+     Le modele tente d'abord le nom de la metrique comme une colonne, Snowflake
+     rejette (invalid identifier 'DUREE_TOTALE_MS'), et le modele RECONSTRUIT
+     l'expression de memoire.
+
+     Mesure : 10 questions de duree totale, 22 SQL executes, 12 en erreur
+     (55 %), et les 10 questions ont toutes echoue a leur premiere tentative.
+
+     Les descriptions, synonymes et AI_SQL_GENERATION de ce fichier restent
+     donc le bon levier — ils orientent la re-derivation, et sur cette campagne
+     elle a converge vers la bonne formule 10 fois sur 10, piege inclus. Mais
+     c'est un GUIDAGE FORT, PAS UNE GARANTIE : la validation revient au golden
+     dataset (eval/golden_questions.json), a rejouer apres toute evolution de
+     cette vue, du modele d'orchestration ou de la plateforme.
+
+     Mecanisme detaille, protocole et resultats : docs/06-retrospective.md.
 
    SYNTAXE — verifiee sur la doc Snowflake le 18/08/2026
    https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view
