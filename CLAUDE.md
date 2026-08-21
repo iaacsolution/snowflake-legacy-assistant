@@ -37,7 +37,11 @@ Le bootstrap (rôle, warehouse, database, schema, stage, grants) est déjà exé
 
 ### Sécurité et privilèges
 
-- ACCOUNTADMIN est interdit en dehors du script sql/00_bootstrap.sql. Tout le reste s'exécute sous AI_ENGINEER_ROLE.
+- L'escalade de privilège n'est autorisée que dans **deux** scripts d'amorçage, à jouer une fois à la main dans Snowsight :
+  - `sql/00_bootstrap.sql` — ACCOUNTADMIN ;
+  - `sql/01_keypair_auth.sql` — SECURITYADMIN, requis par `ALTER USER ... SET RSA_PUBLIC_KEY`, sans alternative possible.
+
+  Toute autre escalade est interdite — ACCOUNTADMIN, SECURITYADMIN, USERADMIN, ORGADMIN. Tout le reste s'exécute sous AI_ENGINEER_ROLE. Contrôlé par `scripts/lint_sql.py`.
 - Aucun credential en dur dans le code ou les fichiers SQL. Toujours via connections.toml ou variables d'environnement.
 - Ne jamais committer connections.toml, .env, ni aucun fichier de sortie contenant des données réelles.
 

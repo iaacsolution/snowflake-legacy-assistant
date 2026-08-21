@@ -31,11 +31,10 @@ RACINE = Path(__file__).resolve().parents[1]
 # Scripts d'amorcage, seuls autorises a escalader. Ils s'executent une fois, a
 # la main dans Snowsight, et ne contiennent que des placeholders.
 #
-# NOTE — CLAUDE.md ne nomme que 00_bootstrap.sql. Le repo en compte deux depuis
-# le J1 : 01_keypair_auth.sql pose la cle publique par ALTER USER ... SET
-# RSA_PUBLIC_KEY, ce qui exige SECURITYADMIN et ne peut pas s'ecrire autrement.
-# La liste ci-dessous reflete donc le repo reel ; l'ecart de formulation avec
-# CLAUDE.md est signale a l'auteur, la regle de securite ne se modifie pas seule.
+# Cette liste est la transcription exacte de la regle d'escalade de CLAUDE.md,
+# section Securite et privileges : 00_bootstrap.sql sous ACCOUNTADMIN, et
+# 01_keypair_auth.sql sous SECURITYADMIN, que ALTER USER ... SET RSA_PUBLIC_KEY
+# exige sans alternative. Toute autre escalade est un ecart.
 BOOTSTRAP = ("00_bootstrap.sql", "01_keypair_auth.sql")
 
 ROLES_PRIVILEGIES = ("ACCOUNTADMIN", "SECURITYADMIN", "USERADMIN", "ORGADMIN")

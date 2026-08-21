@@ -27,11 +27,14 @@ Convention de statut :
 
 ## 1. Sécurité et intégrité — conservées sans arbitrage
 
-Conservées **verbatim**, sur consigne explicite : elles ne sont ni fusionnées,
-ni reformulées, ni supprimées, quel que soit leur statut de preuve. Leur
-réévaluation appartient à l'utilisateur.
+Conservées **verbatim** lors de l'inventaire, sur consigne explicite : elles
+n'ont été ni fusionnées, ni reformulées, ni supprimées de ma propre initiative,
+quel que soit leur statut de preuve. Leur réévaluation appartient à l'auteur.
 
-### r10 — ACCOUNTADMIN interdit hors `00_bootstrap.sql`
+**Une seule a été amendée depuis, et sur sa décision** : r10, dont le texte ne
+décrivait pas le repo (détail en fin de section).
+
+### r10 — escalade de privilège limitée aux scripts d'amorçage
 
 - **Statut** : DÉCISION.
 - **Échec observé** : aucun incident. La règle a tenu sans friction sur J1–J4.
@@ -47,6 +50,17 @@ réévaluation appartient à l'utilisateur.
 - **Test d'infirmation** : rejouer le repo depuis zéro sous `AI_ENGINEER_ROLE`
   seul et compter les blocages. S'il y en a plus de deux ou trois, la frontière
   bootstrap/travail est mal tracée.
+- **Amendement du 21/08/2026, décidé par l'auteur.** L'écriture de
+  `scripts/lint_sql.py` a révélé que la règle ne décrivait pas le repo : elle ne
+  nommait que `00_bootstrap.sql`, alors que `01_keypair_auth.sql` escalade
+  légitimement en SECURITYADMIN depuis le J1 — `ALTER USER ... SET
+  RSA_PUBLIC_KEY` l'exige et il n'existe aucune alternative. Le linter appliquait
+  donc une liste blanche plus large que la règle écrite, ce qui est exactement
+  l'inverse de ce qu'on veut d'un garde-fou. La règle nomme désormais les deux
+  exceptions et interdit tout le reste ; le linter en est la transcription
+  littérale. **Preuve que le garde-fou vaut plus que la règle seule** : c'est en
+  automatisant le contrôle qu'on a découvert que le texte était faux depuis
+  quatre jours, sans qu'aucune relecture ne l'ait vu.
 
 ### r11 — aucun credential en dur
 
