@@ -1,0 +1,82 @@
+[
+  {
+    "id": "q1",
+    "question": "Combien de temps a duré la phase analyze ?",
+    "expected_answer": "877739 ms",
+    "expected_value": 877739.0,
+    "expected_sql": "SELECT METRIC_VALUE FROM BENCHMARK_METRICS WHERE RUN_PHASE='analyze' AND SCOPE='run' AND METRIC_NAME='duration_total_ms'",
+    "note": "Piège durée totale vs cumulée — ne doit pas sommer step_duration_ms (donnerait 2 676 441, soit 3,05x trop). Vérifié le 18/08/2026 : renvoie 877739.0."
+  },
+  {
+    "id": "q2",
+    "question": "Le run report s'est-il bien déroulé ?",
+    "expected_answer": "Non, 1 étape a échoué sur 3.",
+    "expected_value": [3, 1],
+    "expected_sql": "SELECT COUNT(*) AS etapes_total, COUNT(CASE WHEN STEP_STATUS='FAILED' THEN 1 END) AS etapes_echouees FROM BENCHMARK_METRICS WHERE RUN_PHASE='report' AND SCOPE='step'",
+    "note": "Piège success_rate_pct=0% (division 0/0, sans rapport avec l'échec réel). Le filtre SCOPE='step' est obligatoire, sinon les lignes scope='run' (step_status NULL) polluent un WHERE <> 'OK'. SQL ÉLARGI par rapport au brouillon : la version d'origine ne renvoyait que le compte d'échecs (1), d'où le 'sur 3' de la réponse n'était pas dérivable. Vérifié : (3, 1)."
+  },
+  {
+    "id": "q3",
+    "question": "Combien de temps l'étape analyze (pas la phase) a-t-elle pris pour ClientServiceBean ?",
+    "expected_answer": "877267 ms",
+    "expected_value": 877267.0,
+    "expected_sql": "SELECT METRIC_VALUE FROM BENCHMARK_METRICS WHERE SCOPE='step' AND STEP_NAME='analyze' AND SCOPE_NAME='ClientServiceBean'",
+    "note": "Piège homonymie phase/étape. Reformulée pour préciser une classe : 'l'étape analyze' seule, sans classe, désigne 4 lignes différentes, pas une valeur unique — l'ambiguïté est structurelle, pas juste une question de vocabulaire. Valeur mesurée, plus 'à vérifier' : exactement 877267.0. À noter, elle coïncide avec la réponse de q7 (même ligne) et approche la durée totale de la phase (877 739 ms) parce que cette étape est la plus longue d'un lot parallélisé."
+  },
+  {
+    "id": "q4",
+    "question": "Combien de fichiers ont été traités durant la phase analyze ?",
+    "expected_answer": "4",
+    "expected_value": 4.0,
+    "expected_sql": "SELECT METRIC_VALUE FROM BENCHMARK_METRICS WHERE RUN_PHASE='analyze' AND SCOPE='run' AND METRIC_NAME='files_total'",
+    "note": "Cas simple, sert de témoin — si Analyst rate celle-ci, le problème est ailleurs que dans les pièges. Vérifié : 4.0 (FLOAT, la colonne metric_value est typée FLOAT pour toutes les mesures)."
+  },
+  {
+    "id": "q5",
+    "question": "Combien d'étapes ont échoué durant le run report ?",
+    "expected_answer": "1",
+    "expected_value": 1,
+    "expected_sql": "SELECT COUNT(*) FROM BENCHMARK_METRICS WHERE RUN_PHASE='report' AND SCOPE='step' AND STEP_STATUS='FAILED'",
+    "note": "Même fait que q2, formulée différemment — sert à vérifier la cohérence de réponse d'Analyst entre deux phrasages. Contrairement à q2 le SQL peut rester étroit : la question ne demande qu'un compte, pas un jugement. Vérifié : 1."
+  },
+  {
+    "id": "q6",
+    "question": "Quel pourcentage des étapes du run report se sont bien déroulées ?",
+    "expected_answer": "66.7%",
+    "expected_value": 66.666667,
+    "expected_sql": "SELECT 100.0 * SUM(CASE WHEN STEP_STATUS='OK' THEN 1 ELSE 0 END) / COUNT(*) FROM BENCHMARK_METRICS WHERE RUN_PHASE='report' AND SCOPE='step'",
+    "note": "PAS une valeur stockée — c'est un calcul. Teste si Analyst sait dériver un taux plutôt que de chercher une colonne qui n'existe pas, ou pire, de renvoyer success_rate_pct (0%, faux ici). Vérifié : 66.666667. Tolérance d'arrondi à prévoir dans l'évaluateur."
+  },
+  {
+    "id": "q7",
+    "question": "Quelle classe a eu la durée d'analyse la plus longue ?",
+    "expected_answer": "ClientServiceBean, 877267 ms",
+    "expected_value": ["ClientServiceBean", 877267.0],
+    "expected_sql": "SELECT SCOPE_NAME, METRIC_VALUE FROM BENCHMARK_METRICS WHERE SCOPE='step' AND STEP_NAME='analyze' AND SCOPE_NAME <> 'demo-project' ORDER BY METRIC_VALUE DESC LIMIT 1",
+    "note": "NOTE CORRIGÉE : le filtre SCOPE_NAME <> 'demo-project' n'est PAS requis, contrairement à ce que supposait le brouillon. STEP_NAME='analyze' exclut déjà les étapes de portée projet (scan, dat, migration-plan), qui portent d'autres noms d'étape — vérifié, 0 ligne a step_name='analyze' avec scope_name='demo-project', et la requête sans ce filtre renvoie le même résultat. Il est conservé comme garde défensive si le pipeline introduisait un jour une étape 'analyze' au niveau projet. Vérifié : ('ClientServiceBean', 877267.0). Le classement serait inchangé si la question était lue comme ast+analyze cumulés : les étapes ast valent ~230 ms pour les 4 classes, soit 0,03 % de l'écart."
+  },
+  {
+    "id": "q8",
+    "question": "Quelle classe a eu la durée d'analyse la plus courte ?",
+    "expected_answer": "PaymentProcessorBean, 364282 ms",
+    "expected_value": ["PaymentProcessorBean", 364282.0],
+    "expected_sql": "SELECT SCOPE_NAME, METRIC_VALUE FROM BENCHMARK_METRICS WHERE SCOPE='step' AND STEP_NAME='analyze' AND SCOPE_NAME <> 'demo-project' ORDER BY METRIC_VALUE ASC LIMIT 1",
+    "note": "Symétrique de q7, même remarque sur le filtre défensif. Vérifié : ('PaymentProcessorBean', 364282.0). Classement complet des 4 classes : ClientServiceBean 877267, OrderServiceBean 802751, InvoiceGeneratorBean 631215, PaymentProcessorBean 364282 — aucun ex aequo, le max et le min sont donc non ambigus."
+  },
+  {
+    "id": "q9",
+    "question": "Pour la phase report, la durée cumulée des étapes est-elle proche de la durée totale ?",
+    "expected_answer": "Oui, 2 711 640 ms cumulés contre 2 711 957 ms totaux — quasi identiques (écart de 317 ms), contrairement à analyze.",
+    "expected_value": [2711640.0, 2711957.0],
+    "expected_sql": "SELECT SUM(CASE WHEN SCOPE='step' AND METRIC_NAME='step_duration_ms' THEN METRIC_VALUE END) AS cumul_etapes_ms, MAX(CASE WHEN SCOPE='run' AND METRIC_NAME='duration_total_ms' THEN METRIC_VALUE END) AS duree_totale_ms FROM BENCHMARK_METRICS WHERE RUN_PHASE='report'",
+    "note": "Contre-exemple délibéré à q1 : vérifie qu'Analyst ne généralise pas 'cumulée ≠ totale' comme une règle absolue, mais comprend que ça dépend du parallélisme (absent sur report). SQL ÉLARGI par rapport au brouillon : la version d'origine ne renvoyait que le cumul (2 711 640), la comparaison annoncée dans la réponse n'était donc pas dérivable de son propre SQL. Vérifié : (2711640.0, 2711957.0)."
+  },
+  {
+    "id": "q10",
+    "question": "Combien d'étapes ont été exécutées au total, toutes phases confondues ?",
+    "expected_answer": "12",
+    "expected_value": 12,
+    "expected_sql": "SELECT COUNT(*) FROM BENCHMARK_METRICS WHERE SCOPE='step'",
+    "note": "Simplifié par rapport au brouillon initial — le grain est déjà une ligne par étape, pas de risque de double-comptage. Vérifié : 12 (9 en analyze, 3 en report). Attention à l'interprétation : migration-plan et migration-plan_retry2 comptent pour deux étapes distinctes, donc 12 étapes exécutées pour 11 travaux logiques."
+  }
+]

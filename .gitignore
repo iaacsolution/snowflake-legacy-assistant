@@ -1,0 +1,23 @@
+connections.toml
+.env
+*.pyc
+__pycache__/
+Thumbs.db
+
+# Cles privees — l'emplacement de reference est ~/.snowflake/, hors du repo.
+# Ces motifs sont un filet de securite si une cle atterrit ici par accident.
+*.p8
+*.pem
+*.key
+rsa_key*
+
+# Journal d'evaluation Cortex Analyst (src/eval_text2sql.py --out).
+# Contient des donnees REELLES du pipeline client : noms de classes Java
+# (ClientServiceBean, PaymentProcessorBean...) et durees d'execution mesurees.
+# Le golden dataset eval/golden_questions.json, lui, est versionne : il definit
+# les questions et les attendus, il est l'actif du projet.
+eval/analyst_run_log.json
+
+# Environnement Python local : recreable depuis les dependances, propre a la
+# machine (chemins Windows en dur dans les scripts d'activation), et volumineux.
+.venv/
