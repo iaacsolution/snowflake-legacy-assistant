@@ -59,10 +59,14 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions epinglees en v7 le 06/09/2026, meme raison que dans ci.yml :
+      # les v4/v5 ciblaient Node.js 20, deprecie. upload-artifact v7 ajoute un
+      # parametre `archive` optionnel et ne touche ni `name`, ni `path`, ni
+      # `retention-days` — l'etape Journal detaille est inchangee.
+      - uses: actions/checkout@v7
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -144,7 +148,7 @@ jobs:
         # reelles — d'ou une retention courte et aucun commit dans le repo
         # (eval/analyst_run_log.json est dans .gitignore pour la meme raison).
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: journal-evaluation
           path: eval_ci.json

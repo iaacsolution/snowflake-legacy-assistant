@@ -29,10 +29,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions epinglees en v7 le 06/09/2026. Les v4/v5 precedentes ciblaient
+      # Node.js 20 : le runner les forcait deja sur Node 24 en emettant une
+      # annotation de depreciation a chaque run. Passage aux majors courants
+      # plutot qu'aux premiers majors Node 24 (checkout v5, setup-python v6),
+      # qui seraient a reprendre au prochain cycle. Aucune rupture pour ce
+      # projet : checkout v7 ne restreint que le checkout de forks sur
+      # pull_request_target / workflow_run, non utilises ici, et setup-python
+      # v7 ne supprime que l'input pip-install, non utilise — `cache: pip` est
+      # inchange. Les trois exigent un runner >= 2.327.1, garanti sur
+      # ubuntu-latest.
+      - uses: actions/checkout@v7
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
